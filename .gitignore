@@ -1,0 +1,5 @@
+node_modules
+dist
+public/scramjet.*
+public/baremux
+public/epoxy
