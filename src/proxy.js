@@ -1,4 +1,22 @@
 let ctl, conn, boot;
+const STORES = ["config", "cookies", "redirectTrackers", "referrerPolicies", "publicSuffixList"];
+const openDB = () => new Promise((res, rej) => {
+  const r = indexedDB.open("$scramjet", 1);
+  r.onupgradeneeded = () => STORES.forEach((s) => r.result.objectStoreNames.contains(s) || r.result.createObjectStore(s));
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});
+// Repairs an empty/broken Scramjet DB left by an earlier broken service worker.
+async function fixDB() {
+  const d = await openDB(); const ok = STORES.every((s) => d.objectStoreNames.contains(s)); d.close();
+  if (ok) return;
+  await new Promise((res, rej) => {
+    const r = indexedDB.deleteDatabase("$scramjet");
+    r.onsuccess = res; r.onerror = () => rej(r.error);
+    r.onblocked = () => rej(new Error("Scramjet DB is stuck. Clear site data for this site and reload"));
+  });
+  (await openDB()).close();
+}
+
 const dflt = () =>
   import.meta.env.VITE_WISP_URL ||
   (location.hostname === "localhost" || location.hostname === "127.0.0.1"
@@ -18,6 +36,7 @@ export function initProxy() {
     const { BareMuxConnection } = await import(/* @vite-ignore */ lib);
     conn = new BareMuxConnection("/baremux/worker.js");
     await conn.setTransport("/epoxy/index.mjs", [{ wisp: getWisp() }]);
+    await fixDB();
     const { ScramjetController } = $scramjetLoadController();
     ctl = new ScramjetController({
       prefix: "/scramjet/",
